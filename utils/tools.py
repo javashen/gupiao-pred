@@ -36,7 +36,7 @@ class EarlyStopping:
         self.counter = 0
         self.best_score = None
         self.early_stop = False
-        self.val_loss_min = np.Inf
+        self.val_loss_min = np.inf
         self.delta = delta
 
     def __call__(self, val_loss, model, path):
@@ -80,16 +80,33 @@ class StandardScaler():
         return (data * self.std) + self.mean
 
 
-def visual(true, preds=None, name='./pic/test.pdf'):
+def visual(true, preds=None, name='./pic/test.pdf', timestamps=None):
     """
     Results visualization
+    Args:
+        true: Ground truth values
+        preds: Predicted values (optional)
+        name: Path to save the plot
+        timestamps: Timestamp values for x-axis (optional)
     """
-    plt.figure()
+    plt.figure(figsize=(10, 6))
+    x_values = timestamps if timestamps is not None else np.arange(len(true))
+    
     if preds is not None:
+        #plt.plot(x_values, preds, label='Prediction', linewidth=2)
         plt.plot(preds, label='Prediction', linewidth=2)
+    #plt.plot(x_values, true, label='GroundTruth', linewidth=2)
     plt.plot(true, label='GroundTruth', linewidth=2)
+    
     plt.legend()
+    plt.xlabel('Timestamp' if timestamps is not None else 'Time step')
+    plt.ylabel('Value')
+    if timestamps is not None:
+        #plt.xticks(rotation=45)
+        plt.xticks(np.arange(len(timestamps)), timestamps, rotation=45)
+    plt.tight_layout()
     plt.savefig(name, bbox_inches='tight')
+    plt.close()
 
 
 def adjustment(gt, pred):

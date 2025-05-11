@@ -2,7 +2,7 @@ from data_provider.data_factory import data_provider
 from data_provider.m4 import M4Meta
 from exp.exp_basic import Exp_Basic
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
-from utils.losses import mape_loss, mase_loss, smape_loss
+from utils.losses import mape_loss, mase_loss, smape_loss, mysmape_loss
 from utils.m4_summary import M4Summary
 import torch
 import torch.nn as nn
@@ -27,6 +27,7 @@ class Exp_Short_Term_Forecast(Exp_Basic):
             self.args.label_len = self.args.pred_len
             self.args.frequency_map = M4Meta.frequency_map[self.args.seasonal_patterns]
         model = self.model_dict[self.args.model].Model(self.args).float()
+        self.args.frequency_map = M4Meta.frequency_map[self.args.seasonal_patterns]
 
         if self.args.use_multi_gpu and self.args.use_gpu:
             model = nn.DataParallel(model, device_ids=self.args.device_ids)
@@ -49,6 +50,8 @@ class Exp_Short_Term_Forecast(Exp_Basic):
             return mase_loss()
         elif loss_name == 'SMAPE':
             return smape_loss()
+        elif loss_name == 'MYSMAPE':
+            return mysmape_loss()
 
     def train(self, setting):
         train_data, train_loader = self._get_data(flag='train')

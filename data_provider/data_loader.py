@@ -246,13 +246,15 @@ class Dataset_Custom(Dataset):
         cols.remove(self.target)
         cols.remove('date')
         df_raw = df_raw[['date'] + cols + [self.target]]
-        num_train = int(len(df_raw) * 0.7)
-        num_test = int(len(df_raw) * 0.2)
+        num_train = int(len(df_raw) * 0.8)
+        num_test = int(len(df_raw) * 0.1)
         num_vali = len(df_raw) - num_train - num_test
         border1s = [0, num_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
         border2s = [num_train, num_train + num_vali, len(df_raw)]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
+        self.board1 = border1
+        self.board2 = border2
 
         if self.features == 'M' or self.features == 'MS':
             cols_data = df_raw.columns[1:]
@@ -268,6 +270,8 @@ class Dataset_Custom(Dataset):
             data = df_data.values
 
         df_stamp = df_raw[['date']][border1:border2]
+        self.df_stamp = df_stamp.copy()
+        
         df_stamp['date'] = pd.to_datetime(df_stamp.date)
         if self.timeenc == 0:
             df_stamp['month'] = df_stamp.date.apply(lambda row: row.month, 1)
@@ -305,6 +309,40 @@ class Dataset_Custom(Dataset):
 
     def inverse_transform(self, data):
         return self.scaler.inverse_transform(data)
+    
+    def item_pred(self, startdate):
+        location = self.df_stamp["date"].str.contains(startdate)
+        item_num = np.where(location)[0].tolist()[0]
+
+        # startdate is the start date for reference data
+        #s_begin = item_num - self.seq_len + 1
+        s_begin = item_num
+        s_end = s_begin + self.seq_len
+        r_begin = s_end - self.label_len
+        r_end = r_begin + self.label_len + self.pred_len
+
+        
+        df_stemp = self.df_stamp[s_begin:s_end]["date"].tolist()
+        dates = pd.date_range(start=startdate, periods=self.pred_len+1, freq='B')
+        df_stemp = df_stemp + [date.strftime('%Y-%m-%d') for date in dates[1:]]
+
+        if self.timeenc == 1:
+            data_mark = time_features(pd.to_datetime(df_stemp), freq=self.freq)
+            data_mark = data_mark.transpose(1, 0)
+
+        seq_x = self.data_x[s_begin:s_end]
+        x_shape = seq_x.shape
+        #seq_y = np.concat(self.data_y[r_begin:r_begin+self.pred_len], np.zeros((self.pred_len, seq_x.shape[-1])).astype(float))
+        #seq_y = self.data_x[r_begin:s_end]
+        #seq_y = np.concatenate((seq_y, np.zeros((self.pred_len, x_shape[1]))))
+        seq_y = self.data_y[r_begin:r_end]
+
+        #seq_x_mark = self.data_stamp[s_begin:s_end]
+        #seq_y_mark = self.data_stamp[r_begin:r_end]
+        seq_x_mark = self.data_stamp[:self.seq_len]
+        seq_y_mark = self.data_stamp[self.seq_len-self.label_len:self.seq_len + self.pred_len]
+
+        return seq_x, seq_y, seq_x_mark, seq_y_mark, df_stemp
 
 
 class Dataset_M4(Dataset):

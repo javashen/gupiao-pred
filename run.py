@@ -147,8 +147,10 @@ if __name__ == '__main__':
     else:
         if hasattr(torch.backends, "mps"):
             args.device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+            args.use_gpu = False
         else:
             args.device = torch.device("cpu")
+            args.use_gpu = False
         print('Using cpu or mps')
 
     if args.use_gpu and args.use_multi_gpu:
@@ -202,7 +204,8 @@ if __name__ == '__main__':
             exp.train(setting)
 
             print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-            exp.test(setting)
+            exp.test(setting, test=1)
+
             if args.gpu_type == 'mps':
                 torch.backends.mps.empty_cache()
             elif args.gpu_type == 'cuda':
@@ -231,9 +234,13 @@ if __name__ == '__main__':
             args.distil,
             args.des, ii)
 
-        print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-        exp.test(setting, test=1)
-        if args.gpu_type == 'mps':
-            torch.backends.mps.empty_cache()
-        elif args.gpu_type == 'cuda':
-            torch.cuda.empty_cache()
+        # print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+        # exp.test(setting, test=1)
+        # if args.gpu_type == 'mps':
+        #     torch.backends.mps.empty_cache()
+        # elif args.gpu_type == 'cuda':
+        #     torch.cuda.empty_cache()
+
+        print('>>>>>>>prediction : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+        pre_dates = ["2022-03-02", "2022-04-14", "2022-05-18", "2022-07-28", "2022-10-14", "2022-12-23"]
+        exp.pred(setting, pre_dates, test=1)

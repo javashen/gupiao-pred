@@ -11,6 +11,8 @@ import warnings
 import numpy as np
 from utils.dtw_metric import dtw, accelerated_dtw
 from utils.augmentation import run_augmentation, run_augmentation_single
+import matplotlib.pyplot as plt
+import datetime
 
 warnings.filterwarnings('ignore')
 
@@ -130,7 +132,8 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                     loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
 
-                if (i + 1) % 100 == 0:
+                #print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                if (i + 1) % 10 == 0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
@@ -218,12 +221,17 @@ class Exp_Long_Term_Forecast(Exp_Basic):
                 trues.append(true)
                 if i % 20 == 0:
                     input = batch_x.detach().cpu().numpy()
+                    #input_stamp = batch_x_mark.detach().cpu().numpy()
+                    #output_stamp = batch_y_mark.detach().cpu().numpy()
                     if test_data.scale and self.args.inverse:
                         shape = input.shape
                         input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                    
+                    # Combine input and output timestamps for x-axis
+                    timestamps = test_data.df_stamp[i*self.args.batch_size:i*self.args.batch_size + self.args.pred_len + self.args.seq_len]["date"].to_list()
                     gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
                     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'), timestamps)
 
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
@@ -266,3 +274,92 @@ class Exp_Long_Term_Forecast(Exp_Basic):
         np.save(folder_path + 'true.npy', trues)
 
         return
+    
+    def pred(self, setting, dates, test=0):
+        test_data, test_loader = self._get_data(flag='test')
+        if test:
+            print('loading model')
+            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+
+        preds = []
+        trues = []
+        folder_path = './test_results/' + setting + '/'
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
+
+        self.model.eval()
+        with torch.no_grad():
+            for date in dates:
+
+                # find the date that can predict 10 day stock price from "date"
+                #location = test_data.df_stamp["date"].str.contains(date)
+                #item_num = np.where(location)[0].tolist()[0]
+                #batch_x, batch_y, batch_x_mark, batch_y_mark = test_data[item_num-self.args.seq_len]
+
+                batch_x, batch_y, batch_x_mark, batch_y_mark, timestamps = test_data.item_pred(date)
+                #timestamps = timestamps["date"].tolist()
+
+                # Convert to tensor and add batch dimension if needed
+                if not torch.is_tensor(batch_x):
+                    batch_x = torch.tensor(batch_x).unsqueeze(0)
+                    batch_y = torch.tensor(batch_y).unsqueeze(0)
+                    batch_x_mark = torch.tensor(batch_x_mark).unsqueeze(0)
+                    batch_y_mark = torch.tensor(batch_y_mark).unsqueeze(0)
+                else:
+                    batch_x = batch_x.unsqueeze(0)
+                    batch_y = batch_y.unsqueeze(0)
+                    batch_x_mark = batch_x_mark.unsqueeze(0)
+                    batch_y_mark = batch_y_mark.unsqueeze(0)
+
+                batch_x = batch_x.float().to(self.device)
+                batch_y = batch_y.float().to(self.device)
+                batch_x_mark = batch_x_mark.float().to(self.device)
+                batch_y_mark = batch_y_mark.float().to(self.device)
+
+                # decoder input
+                dec_inp = torch.zeros_like(batch_y[:, -self.args.pred_len:, :]).float()
+                dec_inp = torch.cat([batch_y[:, :self.args.label_len, :], dec_inp], dim=1).float().to(self.device)
+                # encoder - decoder
+                if self.args.use_amp:
+                    with torch.cuda.amp.autocast():
+                        outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                else:
+                    outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+
+                f_dim = -1 if self.args.features == 'MS' else 0
+                outputs = outputs[:, -self.args.pred_len:, :]
+                batch_y = batch_y[:, -self.args.pred_len:, :].to(self.device)
+                outputs = outputs.detach().cpu().numpy()
+                batch_y = batch_y.detach().cpu().numpy()
+                if test_data.scale and self.args.inverse:
+                    shape = batch_y.shape
+                    if outputs.shape[-1] != batch_y.shape[-1]:
+                        outputs = np.tile(outputs, [1, 1, int(batch_y.shape[-1] / outputs.shape[-1])])
+                    outputs = test_data.inverse_transform(outputs.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                    batch_y = test_data.inverse_transform(batch_y.reshape(shape[0] * shape[1], -1)).reshape(shape)
+
+                outputs = outputs[:, :, f_dim:]
+                batch_y = batch_y[:, :, f_dim:]
+
+                pred = outputs
+                true = batch_y
+
+                preds.append(pred)
+                trues.append(true)
+                #if i % 20 == 0:
+                input = batch_x.detach().cpu().numpy()
+                #input_stamp = batch_x_mark.detach().cpu().numpy()
+                #output_stamp = batch_y_mark.detach().cpu().numpy()
+                if test_data.scale and self.args.inverse:
+                    shape = input.shape
+                    input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
+                
+                # Combine input and output timestamps for x-axis
+                #timestamps = test_data.df_stamp[item_num-self.args.seq_len:item_num + self.args.pred_len]["date"].to_list()
+                gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
+                pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
+                #visual(gt, pd, os.path.join(folder_path, str(date) + '.pdf'), timestamps)
+                date_obj = datetime.datetime.strptime(date, "%Y-%m-%d")
+                formatted_date = date_obj.strftime("%Y-%m-%d")
+                visual(gt, pd, os.path.join(folder_path,str(formatted_date) + '.pdf'), timestamps)
+            

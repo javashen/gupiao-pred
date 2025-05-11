@@ -1,5 +1,8 @@
 # 忽略 .venv 目录
 .venv/
+official-dataset/
+results/
+test_results/
 
 # 其他需要忽略的目录或文件
 *.log
