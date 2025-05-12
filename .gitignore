@@ -26,7 +26,6 @@ runs/
 *.gif
 *.bmp
 *.tiff
-*.csv
 *.json
 *.yaml
 *.yml
